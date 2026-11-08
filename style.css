@@ -110,3 +110,10 @@ button{font-family:inherit;color:inherit}
 .real{text-align:left;background:#fff;border:var(--thin);border-radius:12px;padding:8px 11px;font-size:12.5px;margin:10px 0;line-height:1.6}
 .howto{text-align:left;background:#fff8e8;border:2px dashed var(--ink);border-radius:12px;padding:8px 11px;font-size:12.5px;line-height:1.7}
 .endstat{background:#fff;border:var(--thin);border-radius:12px;padding:8px;font-size:12px;color:#5c4632;margin:10px 0}
+
+.seg{flex-wrap:nowrap;overflow-x:auto}
+.seg button{min-width:0;line-height:1.2}.seg button small{display:block}
+.seg button.add{flex:0 0 52px;background:#eafff1;border-style:dashed}
+.card.side{background:#f3fbff}
+.mini{float:right;background:#fff;border:2px solid var(--ink);border-radius:9px;font-size:11px;padding:2px 7px;cursor:pointer;font-family:"Jua",sans-serif}
+.nc.side{background:#cfeaff;box-shadow:var(--sh2)}

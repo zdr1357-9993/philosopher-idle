@@ -19,17 +19,29 @@ const rentNow = () => Math.round(HOUSES[S.house].rent * C().rent);
 const living = () => C().live + rentNow();
 const nodeName = k => k === 'tprep' ? C().teach.prep : k === 'teacher' ? C().teach.job : k === 'lawprep' ? (C().law ? C().law.prep : '로스쿨') : k === 'lawyer' ? (C().law ? C().law.job : '변호사') : k === 'lecturer' ? C().lec.n : NODES[k].n;
 const ranksOf = k => k === 'teacher' ? C().teach.ranks : NODES[k].ranks;
-const rankName = () => { const r = ranksOf(S.pos); return r ? r[S.rank] : nodeName(S.pos); };
+const rankName = (k = S.pos) => { const r = ranksOf(k); return r ? r[rankIdx(k)] : nodeName(k); };
 function W() { if (S.pos === 'tutor') return Math.max(8, S.tu.st * 4); return node().W || 0; }
+const SIDE_OK = ['alba', 'tutor', 'writer', 'youtube'];
+const isSide = k => S.sides.includes(k);
+const act = () => (S.tgt !== 'main' && isSide(S.tgt)) ? S.tgt : S.pos;
+const rankIdx = k => k === 'writer' ? S.wr.rank : k === 'youtube' ? S.yt.rank : S.rank;
+const expMonths = () => ['company', 'civil', 'teacher', 'instructor', 'academy', 'lecturer', 'professor', 'lawyer', 'startup', 'union'].reduce((a, k) => a + (S.hist[k] || 0), 0);
+function addSide(k, quiet) {
+  if (!SIDE_OK.includes(k) || isSide(k) || S.pos === k) return false;
+  if (S.sides.length >= 2) { if (!quiet) toast('부업은 2개까지. 하나를 정리하자.'); return false; }
+  S.sides.push(k); S.tgt = k; if (k === 'tutor') S.tu.st = S.tu.st || 0;
+  say(`➕ 부업 시작: ${NODES[k].e} ${NODES[k].n}`); render(); return true;
+}
+function removeSide(k) { S.sides = S.sides.filter(x => x !== k); if (S.tgt === k) S.tgt = 'main'; say(`➖ 부업 정리: ${NODES[k].n}`); render(); }
 
 /* ───────── 새 인생 ───────── */
 function newLife(c, name) {
   S = { c, name, y: 2026, m: 3, months: 0, mo: COUNTRIES[c].start || 0, fa: 0, hp: 100, mental: 75,
     st: { study: 5, speak: 3, work: 3 }, pos: 'none', rank: 0, posMonths: 0, rankMonths: 0, hist: {}, done: {}, it: {}, house: 0, partner: 0,
     val: { money: 0, wisdom: 0, people: 0 }, econ: 1, trend: 1, burnouts: 0, rest: 0, work: 0, tgt: 'main',
-    tu: { st: 0 }, wr: { ms: 0, books: 0, sales: 0, best: 0, royal: [], sell: 1, rej: 0 }, yt: { subs: 0, prog: 0, videos: 0, months: 0, last: 0, bait: 1, warned: {} },
+    tu: { st: 0 }, wr: { ms: 0, books: 0, sales: 0, best: 0, royal: [], sell: 1, rej: 0, rank: 0 }, yt: { subs: 0, prog: 0, videos: 0, months: 0, last: 0, bait: 1, warned: {}, rank: 0 },
     su: { cash: 0, buff: 0 }, ac: { st: 8, low: 0 }, law: { phase: 'admit', m: 0, tries: 0 }, papers: 0, perfSum: 0, perfN: 0, fails: 0,
-    huntMonths: 0, lecMonths: 0, lecApply: 0, lecCut: 0, sagesDone: {}, ends: {}, topEnd: null, log: [], chicken: 0, courseM: {}, lastNet: null };
+    sides: [], wk: {}, huntMonths: 0, lecMonths: 0, lecApply: 0, lecCut: 0, sagesDone: {}, ends: {}, topEnd: null, log: [], chicken: 0, courseM: {}, lastNet: null };
   Object.keys(NODES).forEach(k => S.hist[k] = 0);
 }
 
@@ -47,24 +59,22 @@ function tap(e) {
   if (busy() || paused || !S) return;
   if (S.rest > 0) { toast('😵 번아웃으로 쉬는 중… (' + S.rest + '개월)'); return; }
   if (S.hp < 1) { pop(e, '지쳤다… 잠깐 쉬자', '#ff6b6b'); return; }
-  S.hp -= 1; let label; if (S.it.chair) S.hp += .25;
-  if (S.tgt === 'side' && S.pos !== 'alba') {
-    const g = C().pay.alba / 20; S.mo += g; S.mental -= .05; S.hist.alba += 1 / 20; label = '+' + won(g);
+  S.hp -= 1; let label = ''; if (S.it.chair) S.hp += .25;
+  const k = act(), main = k === S.pos, n = NODES[k];
+  if (k === 'alba' && !main) {
+    const g = C().pay.alba / 20; S.mo += g; label = '+' + won(g);
     if (grow('work', .01)) label += ` · 📊 실무 ${Math.floor(S.st.work)}!`;
-  } else {
-    const n = node();
-    if (S.pos === 'none') { label = '🤔 생각 중…'; if (grow('study', .03)) label = `🧠 학문 ${Math.floor(S.st.study)}!`; }
-    else {
-      S.work++;
-      const up = grow(n.stat, S.work > (W() || 20) ? .012 : .025);
-      if (S.pos === 'startup' || S.pos === 'lawyer') grow('speak', .01);
-      if (S.pos === 'company') grow('speak', .008);
-      label = up ? `${STATS[n.stat].e} ${STATS[n.stat].n} ${Math.floor(S.st[n.stat])}!` : (W() ? `노동 ${S.work}/${W()}` : '');
-      if (S.pos === 'writer') { S.wr.ms = Math.min(100, S.wr.ms + .15 + S.st.study / 250); label = up ? label : `✍️ 원고 ${Math.floor(S.wr.ms)}%`; if (S.wr.ms >= 100 && !S.wr.told) { S.wr.told = 1; say('📄 원고 완성! 홈에서 투고할 수 있다.'); } }
-      if (S.pos === 'youtube') { S.yt.prog += 2 + S.st.speak / 12; label = up ? label : `🎬 편집 ${Math.min(100, Math.floor(S.yt.prog))}%`; if (S.yt.prog >= 100) upload(); }
-      const w = W(); if (w && S.work > w) label = label.startsWith('노동') ? `💪 추가 노동 (${STATS[n.stat].n} ↑)` : label;
-      if (w && S.work === w) label = '✔ 이번 달 노동 완료!';
-    }
+  } else if (k === 'none') { label = '🤔 생각 중…'; if (grow('study', .03)) label = `🧠 학문 ${Math.floor(S.st.study)}!`; }
+  else {
+    S.wk[k] = (S.wk[k] || 0) + 1; if (main) S.work++;
+    const w = main ? W() : (k === 'tutor' ? Math.max(8, S.tu.st * 4) : 0), cnt = main ? S.work : S.wk[k];
+    const up = grow(n.stat, w && cnt > w ? .012 : main ? .025 : .02);
+    if (main && (S.pos === 'startup' || S.pos === 'lawyer')) grow('speak', .01);
+    if (main && S.pos === 'company') grow('speak', .008);
+    label = up ? `${STATS[n.stat].e} ${STATS[n.stat].n} ${Math.floor(S.st[n.stat])}!` : (w ? `노동 ${cnt}/${w}` : '');
+    if (k === 'writer') { S.wr.ms = Math.min(100, S.wr.ms + .15 + S.st.study / 250); if (!up) label = `✍️ 원고 ${Math.floor(S.wr.ms)}%`; if (S.wr.ms >= 100 && !S.wr.told) { S.wr.told = 1; say('📄 원고 완성! 홈에서 투고할 수 있다.'); } }
+    if (k === 'youtube') { S.yt.prog += 2 + S.st.speak / 12; if (!up) label = `🎬 편집 ${Math.min(100, Math.floor(S.yt.prog))}%`; if (S.yt.prog >= 100) upload(); }
+    if (w && cnt === w) label = '✔ 이번 달 노동 완료!'; else if (w && cnt > w && !up) label = `💪 추가 노동 (${STATS[n.stat].n} ↑)`;
   }
   pop(e, label); bump(); draw();
 }
@@ -84,8 +94,8 @@ function monthEnd() {
     case 'hunt': { S.huntMonths++;
       if (ratio >= 1) {
         const shin = C().shinsotsu ? (S.months <= 12 ? 2 : .45) : 1;
-        const p = clamp((.02 + S.st.work / 450 + (S.huntBuff || 0)) * S.econ * C().hunt * shin * vm('money'), .01, .45);
-        if (rnd() < p) modalMsg('🎉 최종 합격!', `취준 ${S.huntMonths}개월 만에. (이번 달 확률 ${pct(p)})<br>"철학과요? 질문 많이 하시겠네요."`, () => setPos('company'));
+        const exp = Math.min(.08, expMonths() / 500), p = clamp((.02 + S.st.work / 450 + (S.huntBuff || 0) + exp) * S.econ * C().hunt * (exp > .02 ? Math.max(1, shin) : shin) * vm('money'), .01, .5);
+        if (rnd() < p) modalMsg('🎉 최종 합격!', `${exp > .02 ? '경력직으로 ' : ''}취준 ${S.huntMonths}개월 만에. (이번 달 확률 ${pct(p)})<br>"철학과요? 질문 많이 하시겠네요."${exp > .02 ? '<br>이전 경력 덕분에 대리로 입사!' : ''}`, () => { setPos('company'); if (exp > .02) S.rank = 1; });
         else { S.mental -= 4; say(pick(['📩 "귀하의 뛰어난 역량에도 불구하고…"', '📩 서류 탈락. 자소서의 "실존"이 문제였을까.', '📩 최종 면접 탈락. "질문이 너무 많으셨어요."', '📩 인적성 탈락. 가족유사성 때문이다.']) + ` (확률 ${pct(p)})`); }
       } else say('📝 이번 달엔 노동을 다 못 채워서 지원서를 못 냈다.');
       break; }
@@ -125,13 +135,7 @@ function monthEnd() {
       } else if (S.m === 3 && S.rank < 3 && S.rankMonths >= 96) {
         const p = clamp(.3 + S.st.speak / 300, .1, .8); if (rnd() < p) { S.rank++; S.rankMonths = 0; say(`🎉 ${T.ranks[S.rank]}(으)로! (확률 ${pct(p)})`); if (S.rank >= 3) trigger('teacher'); }
       } break; }
-    case 'tutor': {
-      const need = Math.max(8, S.tu.st * 4), r = Math.min(1, S.work / need); inc = S.tu.st * 50 * r;
-      const pg = S.tu.st === 0 ? .1 + S.work / 60 : (.18 + S.st.speak / 150 + S.fa / 3000) * vm('people') * C().tutor;
-      if (S.tu.st < 8 && rnd() < pg) { S.tu.st++; say(`📞 새 학생! (학생 ${S.tu.st}명)`); }
-      let q = 0; for (let i = 0; i < S.tu.st; i++) if (rnd() < (r < .8 ? .15 : .05)) q++;
-      if (q) { S.tu.st -= q; say(`😢 학생 ${q}명이 그만뒀다. "학원 다니래요."`); }
-      break; }
+    case 'tutor': inc = tutorMonth(S.work, () => setPos('none')); break;
     case 'instructor': inc = 300 * P.alba / 200 * ratio; break;
     case 'academy': {
       const a = S.ac, cap = [40, 120, 300, 700, 1500][S.rank];
@@ -185,21 +189,24 @@ function monthEnd() {
     case 'lawyer': inc = P.lawyer * [1, 1.8, 4][S.rank];
       if (S.m === 1 && S.rank < 2) { const need = [60, 96][S.rank]; if (S.rankMonths >= need) { const p = clamp((S.rank ? .25 : .5) + S.st.work / 300, .1, .85) * vm('money'); if (rnd() < p) { S.rank++; S.rankMonths = 0; say(`⚖️ ${n.ranks[S.rank]}! (확률 ${pct(p)})`); if (S.rank >= 2) trigger('lawyer'); } else say(`😶 승진 보류 (확률 ${pct(p)})`); } }
       break;
-    case 'youtube': { const y = S.yt; y.months++; y.subs = Math.floor(y.subs * .98);
-      if (y.months === 12 && y.subs < 1000 && !y.warned[12]) { y.warned[12] = 1; modalChoice('📺 1년 했는데 망했다', `영상 ${y.videos}개, 구독자 ${num(y.subs)}명. 수익 창출(1,000명)도 못 넘겼다.`, [['그래도 계속', () => { S.mental -= 10; }], ['접는다', () => setPos('none')]]); }
-      if (y.months === 60 && y.subs < 1e4 && !y.warned[60]) { y.warned[60] = 1; modalChoice('📺 5년째…', `구독자 ${num(y.subs)}명. 친구들이 "아직도 해?"라고 묻는다.`, [['10년은 해봐야지', () => { S.mental -= 15; }], ['접는다', () => setPos('none')]]); }
-      if (y.months === 120 && y.subs < 1e5 && !y.warned[120]) { y.warned[120] = 1; modalChoice('📺 10년 했는데 망했다', `영상 ${y.videos}개, 구독자 ${num(y.subs)}명. 실버 버튼은 오지 않았다.`, [['이건 내 삶이다. 계속', () => { S.mental -= 20; S.val.wisdom += .5; }], ['이제 놓아준다', () => setPos('none')]]); }
-      break; }
-    case 'startup': { const s = S.su, burn = [300, 500, 900, 1800, 4000, 8000, 0][S.rank], rev = [0, 80, 400, 1600, 6000, 20000, 0][S.rank] * S.econ;
+    case 'youtube': ytMonth(() => setPos('none')); break;
+    case 'startup': { const s = S.su, burn = [150, 300, 700, 1500, 4000, 8000, 0][S.rank], rev = [0, 80, 400, 1600, 6000, 20000, 0][S.rank] * S.econ;
       s.cash += rev - burn; inc = [0, 0, 400, 800, 1500, 3000, 0][S.rank];
-      if (ratio >= .8 && S.rank < 6) { const p = clamp([.06, .05, .04, .035, .03, .025][S.rank] * (1 + S.st.work / 70) * S.econ * (C().startup || 1) * vm('money') + s.buff, .005, .4); s.buff = 0;
-        if (rnd() < p) { S.rank++; const f = [0, 0, 5e4, 3e5, 3e6, 2e7, 0][S.rank]; s.cash += f; say(`🚀 ${n.ranks[S.rank]}! ${f ? '투자 ' + won(f) : ''} (확률 ${pct(p)})`); if (S.rank >= 6) { S.mo += 1e7; trigger('thiel'); } } }
+      if (ratio >= .8 && S.rank < 6) { const p = clamp([.03, .025, .02, .015, .012, .008][S.rank] * (1 + S.st.work / 150) * S.econ * (C().startup || 1) * vm('money') + s.buff, .004, .1); s.buff = 0;
+        if (S.rankMonths >= 6 && rnd() < p) { S.rank++; S.rankMonths = 0; const f = [0, 0, 5e4, 3e5, 3e6, 2e7, 0][S.rank]; s.cash += f; say(`🚀 ${n.ranks[S.rank]}! ${f ? '투자 ' + won(f) : ''} (확률 ${pct(p)})`); if (S.rank >= 6) { S.mo += 1e7; trigger('thiel'); } } }
       if (s.cash < 0) { S.fails++; S.mental -= 30; modalMsg('💥 폐업', `회사 통장이 바닥났다. ${S.fails}번째 실패.`, () => { setPos('none'); if (S.fails >= 3) trigger('diogenes'); }); }
       break; }
     case 'union': inc = P.alba * 1.25;
       if (S.m === 5 && S.rank < 4 && S.rankMonths >= n.promoY[S.rank] * 12) { const p = clamp(.4 + S.st.speak / 300 + S.fa / 5000, .1, .9); if (rnd() < p) { S.rank++; S.rankMonths = 0; say(`✊ ${n.ranks[S.rank]} 선출! (확률 ${pct(p)})`); if (S.rank >= 4) trigger('revolution'); } else say(`🗳️ 낙선 (확률 ${pct(p)})`); }
       break;
   }
+  for (const sd of S.sides) {
+    S.hist[sd] = (S.hist[sd] || 0) + 1;
+    if (sd === 'tutor') inc += tutorMonth(S.wk.tutor || 0, () => removeSide('tutor'));
+    if (sd === 'youtube') ytMonth(() => removeSide('youtube'));
+  }
+  if (S.sides.length) S.mental -= S.sides.length * .8;
+  S.wk = {};
   if (S.wr.royal.length) { const r = S.wr.royal.shift(); inc += r; }
   S.mo += inc - out; S.lastNet = { inc: Math.round(inc), out: Math.round(out) };
   if (S.it.mustache) S.fa += Math.max(0, S.fa - (S.faLast ?? S.fa)) * .5; S.faLast = S.fa;
@@ -219,12 +226,27 @@ function monthEnd() {
   save(); render();
 }
 
+/* ───────── 본업·부업 공용 월 처리 ───────── */
+function tutorMonth(work, quit) {
+  const need = Math.max(8, S.tu.st * 4), r = Math.min(1, work / need), inc = S.tu.st * 50 * r;
+  const pg = S.tu.st === 0 ? .1 + work / 60 : (.18 + S.st.speak / 150 + S.fa / 3000) * vm('people') * C().tutor;
+  if (S.tu.st < 8 && rnd() < pg) { S.tu.st++; say(`📞 새 과외 학생! (학생 ${S.tu.st}명)`); }
+  let q = 0; for (let i = 0; i < S.tu.st; i++) if (rnd() < (r < .8 ? .15 : .05)) q++;
+  if (q) { S.tu.st -= q; say(`😢 과외 학생 ${q}명이 그만뒀다. "학원 다니래요."`); }
+  return inc;
+}
+function ytMonth(quit) {
+  const y = S.yt; y.months++; y.subs = Math.floor(y.subs * .98);
+  if (y.months === 12 && y.subs < 1000 && !y.warned[12]) { y.warned[12] = 1; modalChoice('📺 1년 했는데 망했다', `영상 ${y.videos}개, 구독자 ${num(y.subs)}명. 수익 창출(1,000명)도 못 넘겼다.`, [['그래도 계속', () => { S.mental -= 10; }], ['접는다', quit]]); }
+  if (y.months === 60 && y.subs < 1e4 && !y.warned[60]) { y.warned[60] = 1; modalChoice('📺 5년째…', `구독자 ${num(y.subs)}명. 친구들이 "아직도 해?"라고 묻는다.`, [['10년은 해봐야지', () => { S.mental -= 15; }], ['접는다', quit]]); }
+  if (y.months === 120 && y.subs < 1e5 && !y.warned[120]) { y.warned[120] = 1; modalChoice('📺 10년 했는데 망했다', `영상 ${y.videos}개, 구독자 ${num(y.subs)}명. 실버 버튼은 오지 않았다.`, [['이건 내 삶이다. 계속', () => { S.mental -= 20; S.val.wisdom += .5; }], ['이제 놓아준다', quit]]); }
+}
 /* ───────── 작가·유튜버 ───────── */
 function submitMs() {
-  const w = S.wr; if (w.ms < 100 || S.pos !== 'writer') return;
-  if (S.rank === 0) {
+  const w = S.wr; if (w.ms < 100 || (S.pos !== 'writer' && !isSide('writer'))) return;
+  if (w.rank === 0) {
     const p = clamp(.005 + Math.pow(S.st.study / 100, 2.5) * .4, .005, .45);
-    if (rnd() < p) { S.rank = 1; w.debut = 1; w.ms = 0; w.told = 0; S.mo += 500; S.fa += 50; modalMsg('🏆 신춘문예 당선!', `${w.rej}번 떨어진 끝에. (확률 ${pct(p)}) 상금 500만원.`); }
+    if (rnd() < p) { w.rank = 1; w.debut = 1; w.ms = 0; w.told = 0; S.mo += 500; S.fa += 50; modalMsg('🏆 신춘문예 당선!', `${w.rej}번 떨어진 끝에. (확률 ${pct(p)}) 상금 500만원.`); }
     else { w.rej++; w.ms = 55; w.told = 0; S.mental -= 6; modalMsg('📩 낙선', `${w.rej}번째 낙선. (확률 ${pct(p)})<br>원고를 고쳐 쓰자. 진척도 55%로.`); }
   } else {
     const p = clamp(.1 + S.st.study / 200, .1, .6);
@@ -234,8 +256,8 @@ function submitMs() {
       w.sell = 1; w.sales += sales; w.best = Math.max(w.best, sales); S.fa += sales / 150 * C().fame;
       const roy = sales * .15; for (let i = 0; i < 12; i++) w.royal[i] = (w.royal[i] || 0) + roy * (i < 3 ? .2 : .4 / 9);
       S.mo += 300;
-      let nr = 2; if (w.books >= 3) nr = 3; if (w.best >= 1e5) nr = 4; if (w.sales >= 200e4 && w.books >= 6) nr = 5; if (nr > S.rank) S.rank = nr;
-      modalMsg(sales >= 1e5 ? '🔥 베스트셀러!' : '📚 책이 나왔다', `${w.books}번째 책. ${num(sales)}부 팔렸다. (출판 확률 ${pct(p)})<br>선인세 300만원 + 인세는 1년에 걸쳐.${sales < 1000 ? '<br>…초판 1쇄도 다 안 팔렸다.' : ''}`, () => { if (S.rank >= 5) trigger('classic'); });
+      let nr = 2; if (w.books >= 3) nr = 3; if (w.best >= 1e5) nr = 4; if (w.sales >= 200e4 && w.books >= 6) nr = 5; if (nr > w.rank) w.rank = nr;
+      modalMsg(sales >= 1e5 ? '🔥 베스트셀러!' : '📚 책이 나왔다', `${w.books}번째 책. ${num(sales)}부 팔렸다. (출판 확률 ${pct(p)})<br>선인세 300만원 + 인세는 1년에 걸쳐.${sales < 1000 ? '<br>…초판 1쇄도 다 안 팔렸다.' : ''}`, () => { if (w.rank >= 5) trigger('classic'); });
     } else { w.rej++; w.ms = 60; w.told = 0; S.mental -= 5; modalMsg('📩 출판 거절', `"요즘 이런 책은 안 팔려서요." (확률 ${pct(p)})`); }
   }
   render();
@@ -248,7 +270,7 @@ function upload() {
   if (y.subs >= 1000) S.mo += v * .00025 * C().pay.alba / 200;
   S.fa += v / 5000 * C().fame;
   const th = [0, 1e3, 1e4, 1e5, 1e6, 1e7]; let nr = 0; th.forEach((t, i) => { if (y.subs >= t) nr = i; });
-  if (nr > S.rank) { S.rank = nr; say(`🏅 ${node().ranks[S.rank]} 달성!`); if (S.rank >= 5) trigger('platform'); }
+  if (nr > y.rank) { y.rank = nr; say(`🏅 유튜브 ${NODES.youtube.ranks[y.rank]} 달성!`); if (y.rank >= 5) trigger('platform'); }
   say(hit ? `🚀 알고리즘 떡상!! 조회수 ${num(v)}, 구독자 +${num(ns)}` : `📤 업로드: 조회수 ${num(v)}, 구독자 +${num(ns)}${v < 50 ? ' (한 명은 엄마)' : ''}`);
 }
 
@@ -256,19 +278,19 @@ function upload() {
 function costOf(k) { if (k === 'tprep') return C().teach.cost || 0; return NODES[k].cost || 0; }
 function setPos(k) {
   S.pos = k; S.rank = 0; S.posMonths = 0; S.rankMonths = 0; S.work = 0; S.tgt = 'main'; S.perfSum = S.perfN = 0;
-  if (k === 'tutor') S.tu.st = 0;
+  if (k === 'tutor' && !S.hist.tutor) S.tu.st = 0;
   if (k === 'academy') S.ac = { st: 8, low: 0 };
   if (k === 'startup') S.su = { cash: NODES.startup.cost, buff: 0 };
   if (k === 'lawprep') S.law = { phase: 'admit', m: 0, tries: 0 };
-  if (k === 'writer') { const w = S.wr; S.rank = w.books ? (w.best >= 1e5 ? 4 : w.books >= 3 ? 3 : 2) : (w.debut ? 1 : 0); }
-  if (k === 'youtube') [0, 1e3, 1e4, 1e5, 1e6, 1e7].forEach((t, i) => { if (S.yt.subs >= t) S.rank = i; });
+  S.sides = S.sides.filter(x => x !== k);
   render();
 }
-function tryStart(k) {
+function tryStart(k, asSide) {
   const n = NODES[k]; if (!n.req(S) || S.pos === k) return;
+  if (asSide) { addSide(k); tab = 'home'; render(); return; }
   const cost = costOf(k);
   const go = () => { if (cost) S.mo -= cost; say(`${n.e} ${nodeName(k)} 시작!`); setPos(k); tab = 'home'; render(); };
-  if (S.pos !== 'none') modalChoice('🔀 진로 변경', `<b>${nodeName(S.pos)}</b>을(를) 그만두고 <b>${nodeName(k)}</b>(으)로?${cost ? `<br>비용 ${won(cost)}` : ''}<br><small>직급·진행은 처음부터. 능력치는 그대로.</small>`, [['간다', go], ['아니다', () => {}]]);
+  if (S.pos !== 'none') modalChoice('🔀 진로 변경', `<b>${nodeName(S.pos)}</b>을(를) 그만두고 <b>${nodeName(k)}</b>(으)로?${cost ? `<br>비용 ${won(cost)}` : ''}<br><small>직급은 처음부터. 능력치·경력·부업은 그대로.</small>`, [['간다', go], ['아니다', () => {}]]);
   else go();
 }
 
@@ -331,24 +353,25 @@ function pop(e, t, col) { if (!t) return; const st = $('#stage'), r = st.getBoun
   c.style.left = clamp(x - 40, 4, r.width - 150) + 'px'; c.style.top = (y - 24) + 'px'; st.appendChild(c); setTimeout(() => c.remove(), 900); }
 function bump() { const c = $('#char'); if (!c) return; c.classList.remove('hit'); void c.offsetWidth; c.classList.add('hit'); }
 function face() { if (S.rest > 0) return '😵'; const a = age(); if (a >= 62) return '🧓'; if (a >= 45) return '🧔';
-  if (S.tgt === 'side' && S.pos !== 'alba') return '🧑‍🍳';
+  const k = act(); if (k !== S.pos) return { alba: '🧑‍🍳', tutor: '🧑‍🏫', writer: '🧑‍🎨', youtube: '🤳' }[k];
   return { none: '🧑', alba: '🧑‍🍳', hunt: '🧑‍💻', company: S.rank >= 4 ? '🤵' : '🧑‍💼', gongsi: '📖', civil: '🧑‍💼', tprep: '🧑‍🎓', teacher: '🧑‍🏫', tutor: '🧑‍🏫', instructor: '🧑‍🏫', academy: '👨‍🏫', master: '🧑‍🎓', phd: '🧑‍🔬', lecturer: '🧑‍🏫', professor: '👨‍🏫', lawprep: '🧑‍🎓', lawyer: '🧑‍⚖️', writer: '🧑‍🎨', youtube: '🤳', startup: S.rank >= 5 ? '🤑' : '🧑‍💻', union: '✊' }[S.pos] || '🧑'; }
 
 /* ───────── 지금 할 일 (가이드) ───────── */
 function goal() {
   const g = (t, b, act) => ({ t, b, act });
+  if (isSide('writer') && S.wr.ms >= 100) return g('부업 원고 완성!', '투고해보자. 본업은 그대로.', [S.wr.rank ? '📮 출판사에 투고' : '📮 신춘문예 투고', submitMs]);
   switch (S.pos) {
     case 'none': return g('할 일을 고르자', '🌳 진로에서 하나 골라 시작하세요. 그동안 탭하면 생각(학문)이 쌓여요.', ['🌳 진로 보기', () => { tab = 'tree'; render(); }]);
     case 'alba': return g('이번 달 노동 채우기', `노동 ${S.work}/${W()} — 다 채우면 월급 전액. 6개월 넘게 성실하면 더 좋은 알바로.`);
-    case 'hunt': { const shin = C().shinsotsu ? (S.months <= 12 ? 2 : .45) : 1; const p = clamp((.02 + S.st.work / 450 + (S.huntBuff || 0)) * S.econ * C().hunt * shin * vm('money'), .01, .45);
-      return g('노동을 채워 지원서 내기', `이번 달 합격 확률 <b>${pct(p)}</b>.${C().shinsotsu ? (S.months <= 12 ? ' 🎴 신졸 카드 사용 중 (x2)' : ' ⚠️ 기졸 — 확률 대폭 하락') : ''} 실무가 오를수록 ↑. 생활비는 투잡 알바로.`); }
+    case 'hunt': { const shin = C().shinsotsu ? (S.months <= 12 ? 2 : .45) : 1; const ex = Math.min(.08, expMonths() / 500), p = clamp((.02 + S.st.work / 450 + (S.huntBuff || 0) + ex) * S.econ * C().hunt * (ex > .02 ? Math.max(1, shin) : shin) * vm('money'), .01, .5);
+      return g('노동을 채워 지원서 내기', `이번 달 합격 확률 <b>${pct(p)}</b>.${expMonths() > 10 ? ' 💼 경력 가산점.' : ''}${C().shinsotsu ? (S.months <= 12 ? ' 🎴 신졸 카드 사용 중 (x2)' : ' ⚠️ 기졸 — 확률 대폭 하락') : ''} 실무가 오를수록 ↑. 생활비는 ＋부업(알바·과외)으로.`); }
     case 'gongsi': return g('4월 시험까지 버티기', `합격 확률 ${pct(clamp(.02 + S.st.work / 330, .02, .3))}. 수입이 없으니 투잡 알바를 섞자.`);
     case 'tprep': { const T = C().teach; return T.ref ? g('수습 기간 채우기', `${T.ref}개월 수습 후 임용 평가 (${S.posMonths}/${T.ref}개월).`) : g(`${T.exam}월 시험 준비`, `합격 확률 ${pct(clamp(T.p[0] + S.st.study / T.p[1], .02, .85))}. 학문이 오를수록 ↑.`); }
     case 'master': return g('석사 논문', `${S.posMonths}/24개월 · 학문 ${Math.floor(S.st.study)}/25`);
     case 'phd': return g('논문 게재하기', `논문 ${S.papers}/${C().phd.papers}편 · ${S.posMonths}/${C().phd.months - 12}개월 이상`);
     case 'lecturer': return g('3월·9월 임용 공고', `임용 확률 ${pct(clamp(.004 + S.papers * .006 + S.st.study / 3000 + S.fa / 4e4, .003, .15) * C().lec.p * Math.sqrt(S.econ))} · 논문 ${S.papers}편${C().lec.cap ? ` · ⏳ 기간제 상한 ${S.lecMonths}/${C().lec.cap}개월` : ''}`);
     case 'lawprep': { const l = S.law, Lw = C().law; return l.phase === 'admit' ? g('입학 시험 준비', `합격 확률 ${pct(clamp(Lw.admit[0] + S.st.study / Lw.admit[1], .03, .85))} (철학과 = 유리)`) : l.phase === 'school' ? g('로스쿨 졸업까지', `${Math.floor(l.m / 12)}/${Lw.years}년 · 학비 연 ${won(Lw.tuition)}`) : g('변호사 시험', `합격 확률 ${pct(clamp(Lw.bar + S.st.study / 400 - .1, .1, .95))}`); }
-    case 'writer': return S.wr.ms >= 100 ? g('원고 완성!', '투고하자. 떨어지면 고쳐 쓴다.', [S.rank ? '📮 출판사에 투고' : '📮 신춘문예 투고', submitMs]) : g('원고 쓰기 (탭)', `진척 ${Math.floor(S.wr.ms)}% · 써도 돈은 0. 생활비는 투잡 알바로.`);
+    case 'writer': return S.wr.ms >= 100 ? g('원고 완성!', '투고하자. 떨어지면 고쳐 쓴다.', [S.wr.rank ? '📮 출판사에 투고' : '📮 신춘문예 투고', submitMs]) : g('원고 쓰기 (탭)', `진척 ${Math.floor(S.wr.ms)}% · 써도 돈은 0. 생활비는 투잡 알바로.`);
     case 'youtube': return g('영상 만들기 (탭)', `편집 ${Math.min(100, Math.floor(S.yt.prog))}% → 100%면 자동 업로드 · 구독자 ${num(S.yt.subs)}`);
     case 'tutor': return g('학생 모으기', S.tu.st ? `학생 ${S.tu.st}명 · 노동 ${S.work}/${W()} 채우면 안 그만둔다` : '탭 = 전단지 붙이기. 많이 붙일수록 첫 학생이 빨리 온다.');
     case 'startup': return g('다음 투자 단계', `회사 현금 ${won(S.su.cash)} · 바닥나면 폐업`);
@@ -417,22 +440,23 @@ function draw() {
   $('#fa').textContent = num(S.fa);
   $('#econ').textContent = S.econ >= 1.12 ? '📈호황' : S.econ <= .85 ? '📉불황' : '';
   $('#char').textContent = face(); $('#bg').textContent = HOUSES[S.house].e + (S.it.cat ? '🐈' : '') + (S.it.mac ? '💻' : '');
-  const side = S.tgt === 'side' && S.pos !== 'alba';
-  $('#tag').textContent = side ? '🏪 투잡 알바 중' : `${node().e} ${rankName()}`;
-  const w = W(); let pr = 0, lab = '';
-  if (side) { lab = `탭 1번 = ${won(C().pay.alba / 20)}`; }
-  else if (S.pos === 'writer') { pr = S.wr.ms; lab = `원고 ${Math.floor(pr)}%`; }
-  else if (S.pos === 'youtube') { pr = Math.min(100, S.yt.prog); lab = `편집 ${Math.floor(pr)}%`; }
-  else if (w) { pr = Math.min(100, S.work / w * 100); lab = `이번 달 노동 ${S.work}/${w}`; }
+  const k = act(), main = k === S.pos;
+  $('#tag').textContent = main ? `${node().e} ${rankName()}` : `${NODES[k].e} 부업: ${rankName(k)}`;
+  const w = main ? W() : (k === 'tutor' ? Math.max(8, S.tu.st * 4) : 0), cnt = main ? S.work : (S.wk[k] || 0); let pr = 0, lab = '';
+  if (k === 'alba' && !main) lab = `탭 1번 = ${won(C().pay.alba / 20)}`;
+  else if (k === 'writer') { pr = S.wr.ms; lab = `원고 ${Math.floor(pr)}%`; }
+  else if (k === 'youtube') { pr = Math.min(100, S.yt.prog); lab = `편집 ${Math.floor(pr)}%`; }
+  else if (w) { pr = Math.min(100, cnt / w * 100); lab = `${main ? '이번 달 노동' : '과외 수업'} ${cnt}/${w}`; }
   else lab = S.pos === 'none' ? '탭 = 생각하기' : '';
   $('#wg').style.width = pr + '%'; $('#wg').classList.toggle('full', pr >= 100); $('#wl').textContent = lab;
-  const segH = S.pos === 'alba' || S.pos === 'none' ? '' : `<button class="${!side ? 'on' : ''}" data-g="main">${node().e} 본업</button><button class="${side ? 'on' : ''}" data-g="side">🏪 투잡 알바 <small>+${won(C().pay.alba / 20)}/탭</small></button>`;
-  const seg = $('#seg'); if (seg._h !== segH) { seg._h = segH; seg.innerHTML = segH; seg.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { S.tgt = b.dataset.g; draw(); }); }
+  const tg = [['main', `${node().e} ${S.pos === 'none' ? '생각하기' : '본업'}`, S.pos === 'none' ? '' : rankName()]].concat(S.sides.map(k => [k, `${NODES[k].e} ${NODES[k].n}`, '부업' + (k === 'alba' ? ` +${won(C().pay.alba / 20)}/탭` : '')]));
+  const segH = tg.map(t => `<button class="${(t[0] === 'main' ? !isSide(S.tgt) : S.tgt === t[0]) ? 'on' : ''}" data-g="${t[0]}">${t[1]}<small>${t[2]}</small></button>`).join('') + (S.sides.length < 2 ? '<button class="add" data-g="add">＋<small>부업</small></button>' : '');
+  const seg = $('#seg'); if (seg._h !== segH) { seg._h = segH; seg.innerHTML = segH; seg.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { if (b.dataset.g === 'add') { sidePicker(); return; } S.tgt = b.dataset.g; draw(); }); }
   if (tab === 'home') { const gl = $('#goalB'); if (gl) { const g = goal(); gl.innerHTML = g.b; } }
 }
 
 /* ───────── 패널 ───────── */
-function nodeState(k) { if (S.pos === k) return 'cur'; if (NODES[k].req(S)) return 'open'; if (S.hist[k] > 0) return 'past'; return 'lock'; }
+function nodeState(k) { if (S.pos === k) return 'cur'; if (isSide(k)) return 'side'; if (NODES[k].req(S)) return 'open'; if (S.hist[k] > 0) return 'past'; return 'lock'; }
 function reqText(k) { if (k === 'tprep') { const t = C().teach.need; return t === 'master' ? '석사 졸업' : '학문 ' + t.split(' ')[1]; } if (k === 'lawprep' && !C().law) return `${C().n}에선 법학 학사부터 다시 해야 한다 (불가)`; return NODES[k].reqT; }
 function nodeDesc(k) { if (k === 'tprep') { const T = C().teach; return T.ref ? `석사 후 ${T.ref}개월 수습. 통과하면 ${T.job}(공무원).` : `매년 ${T.exam}월 시험. 합격하면 ${T.job}.${T.cost ? ' 과정 비용 ' + won(T.cost) + '.' : ''}`; }
   if (k === 'teacher') return `${C().teach.ranks.join(' → ')}. 월 ${won(C().pay.teacher)}부터.`;
@@ -448,13 +472,15 @@ function renderP() {
   if (tab === 'home') {
     const g = goal(), n = node();
     h += `<div class="goal"><div class="gt">🎯 ${g.t}</div><div class="gb" id="goalB">${g.b}</div>${g.act ? `<button class="btn primary wide" id="gAct">${g.act[0]}</button>` : ''}</div>`;
-    h += `<div class="card"><div class="ct">${n.e} <b>${nodeName(S.pos)}</b> <span class="mut">${S.posMonths}개월째</span></div>${ranksOf(S.pos) ? `<div class="lad">${ranksOf(S.pos).map((x, i) => `<span class="${i === S.rank ? 'on' : i < S.rank ? 'd' : ''}">${x}</span>`).join('')}</div>` : ''}${detail()}</div>`;
+    h += `<div class="card"><div class="ct">${n.e} <b>${nodeName(S.pos)}</b> <span class="mut">${S.posMonths}개월째</span></div>${ranksOf(S.pos) ? `<div class="lad">${ranksOf(S.pos).map((x, i) => `<span class="${i === rankIdx(S.pos) ? 'on' : i < rankIdx(S.pos) ? 'd' : ''}">${x}</span>`).join('')}</div>` : ''}${detail()}</div>`;
+    h += S.sides.map(k => `<div class="card side"><div class="ct">${NODES[k].e} <b>${NODES[k].n}</b> <span class="mut">부업 · ${S.hist[k] ? Math.floor(S.hist[k]) + '개월' : '이번 달 시작'}</span><button class="mini" data-rm="${k}">그만두기</button></div>${ranksOf(k) && k !== 'alba' ? `<div class="lad">${ranksOf(k).map((x, i) => `<span class="${i === rankIdx(k) ? 'on' : i < rankIdx(k) ? 'd' : ''}">${x}</span>`).join('')}</div>` : ''}${sideDetail(k)}</div>`).join('');
+    if (!S.sides.length && S.pos !== 'none') h += `<button class="btn wide ghost" id="addSide">＋ 부업 추가하기 <small>(알바·과외·글쓰기·유튜브)</small></button>`;
     h += `<div class="card"><div class="ct small">능력치 <span class="mut">탭할수록 오른다 · 높을수록 천천히</span></div>${Object.keys(STATS).map(k => `<div class="sk"><span>${STATS[k].e} ${STATS[k].n}</span><div class="g"><i style="width:${S.st[k]}%"></i></div><b>${Math.floor(S.st[k])}</b></div>`).join('')}</div>`;
     if (S.lastNet) h += `<div class="card"><div class="kv"><span>지난달 수입</span><b class="pos">+${won(S.lastNet.inc)}</b></div><div class="kv"><span>지난달 지출 (생활비+월세${S.pos === 'academy' ? '+임대료' : ''})</span><b class="neg">-${won(S.lastNet.out)}</b></div></div>`;
     if (age() >= 60) h += `<button class="btn wide ghost" id="retire">🌅 은퇴하고 엔딩 보기</button>`;
   }
   if (tab === 'tree') {
-    h = `<div class="sec">🌳 진로 <small>칸을 누르면 자세히 · 능력치는 어디서든 그대로</small></div>` + BRANCHES.map(b => `<div class="br"><div class="bh">${b.e} ${b.n}</div><div class="chips">${b.nodes.map((k, i) => { const st = nodeState(k); return `${i ? '<span class="ar">›</span>' : ''}<button class="nc ${st}" data-nd="${k}">${NODES[k].e} ${nodeName(k).split(' (')[0]}${st === 'lock' ? ' 🔒' : st === 'cur' ? ' ●' : ''}</button>`; }).join('')}</div></div>`).join('');
+    h = `<div class="sec">🌳 진로 <small>칸을 누르면 자세히 · 능력치는 어디서든 그대로</small></div>` + BRANCHES.map(b => `<div class="br"><div class="bh">${b.e} ${b.n}</div><div class="chips">${b.nodes.map((k, i) => { const st = nodeState(k); return `${i ? '<span class="ar">›</span>' : ''}<button class="nc ${st}" data-nd="${k}">${NODES[k].e} ${nodeName(k).split(' (')[0]}${st === 'lock' ? ' 🔒' : st === 'cur' ? ' ●' : st === 'side' ? ' ＋' : ''}</button>`; }).join('')}</div></div>`).join('');
   }
   if (tab === 'shop') {
     h = SHOP.map(s => `<div class="sec">${s.sec}</div>` + s.items.map(i => { const owned = !i.course && S.it[i.id], lv = S.courseM[i.id + 'n'] || 0, cost = i.course ? Math.round(i.c * Math.pow(1.35, lv)) : i.c, done = i.course && S.courseM[i.id] === S.months;
@@ -469,6 +495,9 @@ function renderP() {
   }
   P.innerHTML = h;
   const g = $('#gAct'); if (g) g.onclick = goal().act[1];
+  P.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeSide(b.dataset.rm));
+  P.querySelectorAll('[data-ms]').forEach(b => b.onclick = submitMs);
+  if ($('#addSide')) $('#addSide').onclick = sidePicker;
   P.querySelectorAll('[data-nd]').forEach(b => b.onclick = () => nodeSheet(b.dataset.nd));
   P.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(b.dataset.buy));
   P.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { const i = +b.dataset.h, x = HOUSES[i]; if (S.mo < x.buy) return; S.mo -= x.buy; S.house = i; say(`${x.e} ${x.n}(으)로 이사!`); if (i === HOUSES.length - 1) trigger('island'); render(); });
@@ -485,9 +514,25 @@ function nodeSheet(k) {
   const n = NODES[k], st = nodeState(k), cost = costOf(k);
   modal(`<div class="big">${n.e}</div><h2>${nodeName(k)}</h2><p>${nodeDesc(k)}</p>
    <div class="kvbox"><div class="kv"><span>시작 조건</span><b>${reqText(k)}</b></div><div class="kv"><span>탭하면 오르는 능력</span><b>${STATS[n.stat].e} ${STATS[n.stat].n}</b></div>${cost ? `<div class="kv"><span>비용</span><b>${won(cost)}</b></div>` : ''}${S.hist[k] ? `<div class="kv"><span>경험</span><b>${S.hist[k]}개월</b></div>` : ''}</div>
-   ${st === 'open' ? `<button class="opt center primary" id="ndGo">시작하기</button>` : st === 'cur' ? '<button class="opt center" disabled>지금 하는 일</button>' : `<button class="opt center" disabled>🔒 아직 조건이 안 된다</button>`}<button class="opt center" id="ndX">닫기</button>`);
+   ${st === 'open' ? `<button class="opt center primary" id="ndGo">본업으로 시작</button>` : st === 'cur' ? '<button class="opt center" disabled>지금 본업</button>' : st === 'side' ? '<button class="opt center" id="ndRm">부업 그만두기</button>' : `<button class="opt center" disabled>🔒 아직 조건이 안 된다</button>`}${SIDE_OK.includes(k) && st === 'open' ? `<button class="opt center" id="ndSide">＋ 부업으로 같이 하기 <small>본업은 그대로 · 최대 2개</small></button>` : ''}<button class="opt center" id="ndX">닫기</button>`);
   if ($('#ndGo')) $('#ndGo').onclick = () => { close(); tryStart(k); };
+  if ($('#ndSide')) $('#ndSide').onclick = () => { close(); tryStart(k, true); };
+  if ($('#ndRm')) $('#ndRm').onclick = () => { close(); removeSide(k); };
   $('#ndX').onclick = close;
+}
+function sideDetail(k) {
+  const kv = (a, b) => `<div class="kv"><span>${a}</span><b>${b}</b></div>`;
+  if (k === 'alba') return kv('탭 1번', won(C().pay.alba / 20)) + kv('20번 탭', '= 알바 한 달 월급');
+  if (k === 'tutor') return kv('학생', S.tu.st + '명') + kv('이번 달 수업', `${S.wk.tutor || 0}/${Math.max(8, S.tu.st * 4)}`);
+  if (k === 'writer') return kv('원고', Math.floor(S.wr.ms) + '%') + kv('책 / 판매', `${S.wr.books}권 / ${num(S.wr.sales)}부`) + (S.wr.ms >= 100 ? `<button class="btn wide primary" data-ms="1">📮 투고하기</button>` : '');
+  if (k === 'youtube') return kv('구독자', num(S.yt.subs)) + kv('마지막 조회수', num(S.yt.last));
+  return '';
+}
+function sidePicker() {
+  const opts = SIDE_OK.filter(k => k !== S.pos && !isSide(k));
+  modal(`<h2>＋ 부업 고르기</h2><p>본업은 그대로 두고 같이 한다. 체력은 나눠 쓴다. 부업 하나마다 매달 멘탈 -1.</p>` + opts.map(k => `<button class="opt" data-ps="${k}">${NODES[k].e} ${NODES[k].n}<small>${{ alba: `탭 1번 = ${won(C().pay.alba / 20)} · 실무 ↑`, tutor: '학생 1명당 월 50만원 · 말 ↑ · 경력이 학원 강사 조건으로 쌓인다', writer: '원고를 쓰면 학문 ↑ · 다 쓰면 투고 (확률)', youtube: '편집하면 말 ↑ · 업로드 조회수는 운' }[k]}</small></button>`).join('') + `<button class="opt center" id="psX">닫기</button>`);
+  document.querySelectorAll('[data-ps]').forEach(b => b.onclick = () => { close(); addSide(b.dataset.ps); });
+  $('#psX').onclick = close;
 }
 function detail() {
   const kv = (a, b) => `<div class="kv"><span>${a}</span><b>${b}</b></div>`, P = C().pay;
@@ -524,5 +569,5 @@ function loop(now) {
   }
   requestAnimationFrame(loop);
 }
-window.__game = { NODES, get S() { return S; }, monthEnd, tap, setPos, tryStart, submitMs, newLife, buildGame };
+window.__game = { NODES, addSide, removeSide, get S() { return S; }, monthEnd, tap, setPos, tryStart, submitMs, newLife, buildGame };
 startScreen(); requestAnimationFrame(loop);
